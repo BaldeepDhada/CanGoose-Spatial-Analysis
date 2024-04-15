@@ -1,0 +1,149 @@
+---
+title: "589 Project Jade"
+author: "Jade Yu"
+date: "2024-04-15"
+output: html_document
+---
+
+# 589 Project
+
+```{r}
+# Load required packages
+library(sp)
+library(dplyr)
+library(sf)
+library(spatstat)
+library(maptools)
+# library(rgdal)
+library(splines)
+```
+
+## Load Data
+
+```{r}
+df <- read.csv("data/Samples_CG/cg_10k_samples.csv", stringsAsFactors = FALSE)
+load("data/BC_Covariates.Rda")
+coord <- df[,c('decimalLatitude','decimalLongitude')]
+# Clean the data by removing the observations with NA
+coord <- na.omit(coord)
+coordinates(coord) <- ~decimalLongitude+decimalLatitude
+proj4string(coord) <- CRS("+proj=longlat +datum=WGS84")
+coord_conv <- spTransform(coord,CRS("+proj=aea +lat_0=45 +lon_0=-126 +lat_1=50 +lat_2=58.5 +x_0=1000000 +y_0=0 +datum=NAD83 +units=m +no_defs"))
+
+
+window <-  as.owin(DATA$Window)
+# create ppp object with coordination and the window 
+ppp_goose <- ppp(coord_conv@coords[,1], 
+                 coord_conv@coords[,2], 
+                 window=window)
+```
+
+## Spatial Analysis
+
+```{r}
+plot(ppp_goose)
+```
+
+```{r}
+# check homogeneity
+Q <- quadratcount(ppp_goose, nx=3, ny=2)
+quadrat.test(Q)
+```
+
+```{r}
+# hot spot analysis to indentify areas of elevated intensity
+R <- bw.ppl(ppp_goose)
+LR <- scanLRTS(ppp_goose, r = R)
+plot(LR)
+```
+
+## Environmental Covariates
+
+```{r}
+sapply(DATA, class)
+```
+
+```{r}
+#Visualise each potential covariate using methods appropriate to each object class.
+potential <- c("Window", "Elevation", "Forest", "HFI", "Dist_Water")
+
+for (i in potential){
+  plot(DATA[[i]], main = i)
+  points(ppp_goose$x, ppp_goose$y, pch = 19, col = "white", cex = 0.6)
+  points(ppp_goose$x, ppp_goose$y, pch = 19, col = "black", cex = 0.4)
+}
+```
+
+```{r}
+# Check relationships between potential covariates via kernel estimation by rhohat
+rho_elev <- rhohat(ppp_goose, DATA$Elevation)
+rho_fore <- rhohat(ppp_goose, DATA$Forest)
+rho_hfi <- rhohat(ppp_goose, DATA$HFI)
+rho_dist_water <- rhohat(ppp_goose, DATA$Dist_Water)
+
+plot(rho_elev, xlim = c(0, max(DATA$Elevation)))
+plot(rho_fore, xlim = c(0, max(DATA$Forest)))
+plot(rho_hfi, xlim = c(0, max(DATA$HFI)))
+plot(rho_dist_water, xlim = c(0, max(DATA$Dist_Water)))
+```
+
+## Regression Model
+
+scale data
+
+```{r}
+mu_elev <- mean(DATA$Elevation$v)
+stdev_elev <- sd(DATA$Elevation$v)
+DATA$Elevation_scaled <- eval.im((Elevation - mu_elev)/stdev_elev, DATA)
+
+mu_forest <- mean(DATA$Forest$v)
+stdev_forest <- sd(DATA$Forest$v)
+DATA$Forest_scaled <- eval.im((Forest - mu_forest)/stdev_forest, DATA)
+
+mu_hfi <- mean(DATA$HFI)
+stdev_hfi <- sd(DATA$HFI)
+DATA$HFI_scaled <- eval.im((HFI - mu_hfi)/stdev_hfi, DATA)
+
+mu_water <- mean(DATA$Dist_Water$v)
+stdev_water <- sd(DATA$Dist_Water$v)
+DATA$Dist_Water_scaled <- eval.im((Dist_Water - mu_water)/stdev_water, DATA)
+```
+
+```{r}
+formula1 <- ppp_goose~HFI_scaled+I(HFI_scaled^2)
+fit1 <- ppm(formula1, data=DATA)
+```
+
+```{r}
+fit1
+co <- coef(fit1)
+```
+
+model validation
+
+```{r}
+plot(fit1, se=TRUE, superimpose=FALSE)
+plot(ppp_goose,
+     pch = 16,
+     cex = 0.7,
+     cols = "white",
+     add = TRUE)
+plot(ppp_goose,
+     pch = 16,
+     cex = 0.5,
+     cols = "black",
+     add = TRUE)
+```
+
+```{r}
+#quadratic testing
+quadrat.test(fit1, nx=2, ny=3)
+
+#partial residual plots
+par_res_hfi <- parres(fit1, "HFI_scaled")
+plot(par_res_hfi,
+     legend = TRUE,
+     lwd = 2,
+     main = "Partial Residual Plot",
+     xlab = "HFI_scaled")
+```
