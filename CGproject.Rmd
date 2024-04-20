@@ -1,0 +1,338 @@
+---
+title: "Canadian Goose Spatial Location"
+author: "Karthiga"
+date: "2024-04-04"
+output: html_document
+---
+
+#### **Index**
+
+#### **1. Loading Data**
+#### **2. Removing NA**
+#### **3. Method to get BC Albers**
+#### **4. Adding x and y to the datasets from BC Albers**
+#### **5. Testing if the thinned data is good representation of original data**
+#### **6. Conversion to ppp**
+#### **7. visualizing Canadian Goose Locations along with elevation data in 2D and 3D**
+#### **8. Calculating and Visulaizing number of goose at each level of elevation**
+#### **9. Testing homogeneity**
+#### **10. calculating the intensity of Canadian goose locations with respect to elevation**
+#### **11. calculating the correlation of Canadian goose locations with respect to elevation**
+#### **12. calculating presence of clustering**
+#### **13. Elevation only Linear Model**
+#### **14. Elevation only non-linear model**
+#### **15. Elevation only Linear Model vs Elevation only non-linear model**
+#### **16. Checking if data deviate significantly from the Elevation only non-linear model prediction**
+#### **17. Visualising Residual Elevation only non-linear model prediction**
+#### **18. Correlation between co-variates**
+#### **19. Checking all rho values of co-variates**
+#### **20. Modelling with all co-variates**
+#### **21. Comparing All Covariate model with null model and Elevation only Model**
+
+
+
+```{r}
+library(spatstat)
+library(sp)
+library(sf)
+library(maptools)
+```
+### 1. Loading Data
+```{r}
+#EXP
+#colSums(is.na(c_g_data_5k))
+
+#Loading Data
+c_g_data_full = read.csv("C:/Users/karth/Documents/Assignments/block-6/589/project/Samples_CG/canadian_goose.csv",sep = ",")
+c_g_data_5k = read.csv("C:/Users/karth/Documents/Assignments/block-6/589/project/Samples_CG/cg_5k_samples.csv",sep = ",")
+c_g_data_8K = read.csv("C:/Users/karth/Documents/Assignments/block-6/589/project/Samples_CG/cg_8k_samples.csv",sep = ",")
+c_g_data_10k = read.csv("C:/Users/karth/Documents/Assignments/block-6/589/project/Samples_CG/cg_10k_samples.csv",sep = ",")
+
+load("BC_Covariates.Rda")
+```
+
+### 2. Removing NA
+```{r}
+c_g_data_5k<-na.omit(c_g_data_5k)
+c_g_data_8K<-na.omit(c_g_data_8K)
+c_g_data_10k<-na.omit(c_g_data_10k)
+```
+
+### 3. Method to get BC Albers
+```{r}
+#' Helps to get BC Albers projection
+#'
+#' @param df 
+#'
+#' @return BC Albers projection
+#'
+#' @examples
+get_bc_albers <- function(df)
+{
+ sf_points <- st_as_sf(df, coords = c("decimalLongitude","decimalLatitude"), crs = 4326)
+ bc_albers_proj <- "+proj=aea +lat_0=45 +lon_0=-126 +lat_1=50 +lat_2=58.5 +x_0=1000000 +y_0=0 +datum=NAD83 +units=m +no_defs"
+ sf_points_bc_albers <- st_transform(sf_points, crs = bc_albers_proj)
+ return(sf_points_bc_albers)
+}
+```
+
+### 4. adding x and y to the datasets
+```{r}
+sf_points_bc_albers <- get_bc_albers(c_g_data_5k)
+c_g_data_5k$x <- st_coordinates(sf_points_bc_albers)[, 1]
+c_g_data_5k$y <- st_coordinates(sf_points_bc_albers)[, 2]
+
+sf_points_bc_albers <- get_bc_albers(c_g_data_8K)
+c_g_data_8K$x <- st_coordinates(sf_points_bc_albers)[, 1]
+c_g_data_8K$y <- st_coordinates(sf_points_bc_albers)[, 2]
+
+sf_points_bc_albers <- get_bc_albers(c_g_data_10k)
+c_g_data_10k$x <- st_coordinates(sf_points_bc_albers)[, 1]
+c_g_data_10k$y <- st_coordinates(sf_points_bc_albers)[, 2]
+
+print(head(c_g_data_5k))
+print(head(c_g_data_8K))
+print(head(c_g_data_10k))
+```
+### 5. Testing if the thinned data is good representation of original data
+#### 5.1. Getting rho value of datasets with different numbber of rows
+```{r}
+library(maptools)
+cg_ppp_5 <-ppp(x = c_g_data_5k$x, y = c_g_data_5k$y, window=as.owin(DATA$Window))
+cg_ppp_8 <-ppp(x = c_g_data_8K$x, y = c_g_data_8K$y, window=as.owin(DATA$Window))
+cg_ppp_10 <-ppp(x = c_g_data_10k$x, y = c_g_data_10k$y, window=as.owin(DATA$Window))
+
+rho_e_5 <- rhohat(cg_ppp_5, DATA$Elevation) 
+rho_e_8 <- rhohat(cg_ppp_8, DATA$Elevation) 
+rho_e_10 <- rhohat(cg_ppp_10, DATA$Elevation) 
+
+rho_f_5 <- rhohat(cg_ppp_5, DATA$Forest) 
+rho_f_8 <- rhohat(cg_ppp_8, DATA$Forest) 
+rho_f_10 <- rhohat(cg_ppp_10, DATA$Forest) 
+
+rho_h_5 <- rhohat(cg_ppp_5, DATA$HFI) 
+rho_h_8 <- rhohat(cg_ppp_8, DATA$HFI) 
+rho_h_10 <- rhohat(cg_ppp_10, DATA$HFI) 
+
+rho_w_5 <- rhohat(cg_ppp_5, DATA$Dist_Water) 
+rho_w_8 <- rhohat(cg_ppp_8, DATA$Dist_Water) 
+rho_w_10 <- rhohat(cg_ppp_10, DATA$Dist_Water) 
+
+print(paste("The average rho value (elevation) of datasets with 5k, 8k and 10k rows are :",rho_e_5$ave[1]," , ",rho_e_8$ave[1]," , ",rho_e_10$ave[1]))
+
+print(paste("The average rho value (forest) of datasets with 5k, 8k and 10k rows are :",rho_f_5$ave[1]," , ",rho_f_8$ave[1]," , ",rho_f_10$ave[1]))
+
+print(paste("The average rho value (HFI) of datasets with 5k, 8k and 10k rows are :",rho_h_5$ave[1]," , ",rho_h_8$ave[1]," , ",rho_h_10$ave[1]))
+
+print(paste("The average rho value (Dist_Water) of datasets with 5k, 8k and 10k rows are :",rho_w_5$ave[1]," , ",rho_w_8$ave[1]," , ",rho_w_10$ave[1]))
+```
+### 5. Testing if the thinned data is good representation of original data
+#### 5.2 Checking if all rho value are inbetween 95% CI
+```{r}
+print("Elevation Rho")
+quantiles_e_5 <- quantile(rho_e_5$rho, probs = c(0.975, 0.025))
+quantiles_e_8 <- quantile(rho_e_8$rho, probs = c(0.975, 0.025))
+quantiles_e_10 <- quantile(rho_e_10$rho, probs = c(0.975, 0.025))
+if(rho_e_5$ave[1] <= quantiles_e_5[1] & rho_e_5$ave[1] >= quantiles_e_5[2]){print("5k dataset : Avaerage rho value is within 95% CI")}
+if(rho_e_8$ave[1] <= quantiles_e_8[1] & rho_e_8$ave[1] >= quantiles_e_8[2]){print("8k dataset :Avaerage rho value is within 95% CI")}
+if(rho_e_10$ave[1] <= quantiles_e_10[1] & rho_e_10$ave[1] >= quantiles_e_10[2]){print("10k dataset: Avaerage rho value is within 95% CI")}
+
+print("Forest Rho")
+quantiles_f_5 <- quantile(rho_f_5$rho, probs = c(0.975, 0.025))
+quantiles_f_8 <- quantile(rho_f_8$rho, probs = c(0.975, 0.025))
+quantiles_f_10 <- quantile(rho_f_10$rho, probs = c(0.975, 0.025))
+if(rho_f_5$ave[1] <= quantiles_f_5[1] & rho_f_5$ave[1] >= quantiles_f_5[2]){print("5k dataset : Avaerage rho value is within 95% CI")}
+if(rho_f_8$ave[1] <= quantiles_f_8[1] & rho_f_8$ave[1] >= quantiles_f_8[2]){print("8k dataset :Avaerage rho value is within 95% CI")}
+if(rho_f_10$ave[1] <= quantiles_f_10[1] & rho_f_10$ave[1] >= quantiles_f_10[2]){print("10k dataset:Avaerage rho value is within 95% CI")}
+
+print("HCI Rho")
+quantiles_h_5 <- quantile(rho_h_5$rho, probs = c(0.975, 0.025))
+quantiles_h_8 <- quantile(rho_h_8$rho, probs = c(0.975, 0.025))
+quantiles_h_10 <- quantile(rho_h_10$rho, probs = c(0.975, 0.025))
+if(rho_h_5$ave[1] <= quantiles_h_5[1] & rho_h_5$ave[1] >= quantiles_h_5[2]){print("5k dataset : Avaerage rho value is within 95% CI")}
+if(rho_h_8$ave[1] <= quantiles_h_8[1] & rho_h_8$ave[1] >= quantiles_h_8[2]){print("8k dataset :Avaerage rho value is within 95% CI")}
+if(rho_h_10$ave[1] <= quantiles_h_10[1] & rho_h_10$ave[1] >= quantiles_h_10[2]){print("10k dataset:Avaerage rho value is within 95% CI")}
+
+print("Water Rho")
+quantiles_w_5 <- quantile(rho_w_5$rho, probs = c(0.975, 0.025))
+quantiles_w_8 <- quantile(rho_w_8$rho, probs = c(0.975, 0.025))
+quantiles_w_10 <- quantile(rho_w_10$rho, probs = c(0.975, 0.025))
+if(rho_w_5$ave[1] <= quantiles_w_5[1] & rho_w_5$ave[1] >= quantiles_w_5[2]){print("5k dataset : Avaerage rho value is within 95% CI")}
+if(rho_w_8$ave[1] <= quantiles_w_8[1] & rho_w_8$ave[1] >= quantiles_w_8[2]){print("8k dataset :Avaerage rho value is within 95% CI")}
+if(rho_w_10$ave[1] <= quantiles_w_10[1] & rho_w_10$ave[1] >= quantiles_w_10[2]){print("10k dataset:Avaerage rho value is within 95% CI")}
+```
+
+
+### 6. Conversion to ppp
+```{r fig.width = 8, fig.height = 6}
+cg_ppp <-ppp(x = c_g_data_10k$x, y = c_g_data_10k$y, window=as.owin(DATA$Window))
+plot(cg_ppp,cols = c("maroon"))
+```
+
+### 7. Plotting Canadian Goose Locations along with elevation detail in 2D and 3D
+```{r fig.width = 8, fig.height = 6}
+library(viridisLite)
+
+# Visualizing location of Canadian Goose with elevation
+plot(DATA$Elevation, main = "Elevation Image")
+points(cg_ppp, pch = 16, cex = 0.7, col = "white")
+points(cg_ppp, pch = 16, cex = 0.3, col = "black", xpd = TRUE)
+
+colors <- plasma(5)
+# Visualizing location of Canadian Goose with elevation in 3D
+fig <- persp(DATA$Elevation, 
+      main = "Perspective Plot of Elevation",  
+      theta = -5, phi = 45,  
+      expand = 50,  
+      colmap = colors, 
+      border = NA,  
+      apron = TRUE,
+      axes = TRUE,  
+      xlab = "X-axis", 
+      ylab = "Y-axis", 
+      zlab = "Elevation (m)",  
+      ticktype = "detailed",  
+      shade = 0.2,
+      lwd = .5,  
+      lty = "solid",  
+      box = FALSE,
+      visible = TRUE
+)
+
+perspPoints(cg_ppp, Z = DATA$Elevation, M = fig, pch = 16, cex = 0.4,col=rgb(1,1,1, alpha = 0.7))
+```
+
+### 8. Calculating and Visulaizing number of goose at each level of elevation
+```{r}
+cg_ppp_df <- as.data.frame(cg_ppp)
+for (i in 1:nrow(cg_ppp_df)) {
+if(length(DATA$Elevation[cg_ppp_df[i,]]) == 0){
+  cg_ppp_df$value[i] <- NA
+}else{
+    cg_ppp_df$value[i] <- DATA$Elevation[cg_ppp_df[i,]]
+  }
+}
+cg_ppp_df <- na.omit(cg_ppp_df)
+cg_ppp_df$group <- cut(cg_ppp_df$value, breaks = 5, labels = c("Low", "Medium-Low", "Medium", "Medium-High", "High"))
+elevation_vice_counts <- table(cg_ppp_df$group)
+plot(elevation_vice_counts)
+```
+
+### 9. Testing homogeneity
+```{r fig.width = 8, fig.height = 6}
+
+Q <- quadratcount(cg_ppp,nx = 10, ny = 10)
+plot(cg_ppp, pch = 16, cex = 0.5, cols = "darkorange",main="BC Park Location")
+plot(Q, cex = 1, col = "black", add = T)
+plot(intensity(Q, image = T), main = "Canadian Goose Location")
+plot(cg_ppp,  pch = 16, cex = 1,cols = "grey",add = T)
+quadrat.test(Q)
+```
+
+### 10. calculating the intensity of Canadian goose locations with respect to elevation
+```{r}
+rho <- rhohat(cg_ppp, DATA$Elevation)
+print(rho)
+plot(rho,xlim = c(0, 2000), main="Relationship between intensity of Canadian Goose and elevation")
+```
+
+### 11. Calculating correlation of Canadian goose locations with respect to elevation
+```{r}
+lambda_park <- density(cg_ppp, bw.ppl)
+Kinhom_park <- Kinhom(cg_ppp, lambda_park)
+lambda_ppp_pos <- density(cg_ppp, sigma=bw.ppl, positive=TRUE)
+E_park_inhom <- envelope(cg_ppp, Kinhom, simulate = expression(rpoispp(lambda_ppp_pos)),correction="border", rank = 1, nsim = 19, fix.n = TRUE)
+plot(E_park_inhom, main = "K plot for inhomogenous assumption", lwd = 2)
+#No correlation
+```
+
+### 12. Calculating presence of clustering
+```{r}
+lambda_ppp_pos <- density(cg_ppp, sigma=bw.ppl, positive=TRUE)
+E_cg_inhom <- envelope(cg_ppp, pcfinhom, simulate = expression(rpoispp(lambda_ppp_pos)), rank = 1, nsim = 19)
+plot(E_cg_inhom,main = "Inhomogenous Assumption envelope")
+#No clustering
+```
+### 13. Elevation only Linear Model
+```{r}
+elevation_formula <- cg_ppp~Elevation
+linear_elevation_fit <- ppm(elevation_formula, data=DATA)
+linear_elevation_fit
+plot(linear_elevation_fit, se = FALSE, superimpose = FALSE)
+plot(cg_ppp, pch = 16, cex = 0.3, cols = "white", add = TRUE)
+plot(cg_ppp, pch = 16, cex = 0.1, cols = "black", add = TRUE)
+```
+### 14. Elevation only non-linear model
+```{r}
+elevation_formula <- cg_ppp~Elevation+I(Elevation^2)
+nonlinear_elevation_fit <- ppm(elevation_formula, data=DATA)
+nonlinear_elevation_fit
+plot(nonlinear_elevation_fit, se = FALSE, superimpose = FALSE)
+plot(cg_ppp, pch = 16, cex = 0.3, cols = "white", add = TRUE)
+plot(cg_ppp, pch = 16, cex = 0.1, cols = "black", add = TRUE)
+```
+###15. Elevation only Linear Model vs Elevation only non-linear model
+
+```{r}
+AIC(nonlinear_elevation_fit)
+AIC(linear_elevation_fit)
+anova(nonlinear_elevation_fit,linear_elevation_fit, test = "LRT")
+```
+
+###16. Checking if data deviate significantly from the Elevation only non-linear model prediction
+
+```{r}
+quadrat.test(nonlinear_elevation_fit, nx = 10, ny = 10)
+#The small p value tells us that there’s a significant deviation from our model’s predictions.
+```
+### 17. Visualising Residual Elevation only non-linear model prediction
+```{r}
+res <- residuals(nonlinear_elevation_fit,type="pearson")
+#res[is.infinite(res)] <- NA
+#res <- na.omit(res)  # Remove missing values
+#sp::plot(res,cols = "transparent")
+res
+```
+
+### 18. Correlation between co-variates
+```{r}
+library(spatstat)
+covariates_subset <- DATA[c("Elevation", "Forest", "HFI", "Dist_Water")]
+cor.im(covariates_subset, use="pairwise.complete.obs")
+```
+### 19.checking all rho values of co-variates
+```{r}
+DATA$cg_ppp <-cg_ppp
+elev_rho <- rhohat(cg_ppp, DATA$Elevation)
+forest_rho <- rhohat(cg_ppp, DATA$Forest)
+hfi_rho <- rhohat(cg_ppp, DATA$HFI)
+water_rho <- rhohat(cg_ppp, DATA$Dist_Water)
+par(mfrow=c(2,2)) 
+plot(elev_rho,xlim = c(0, 2000), main="intensity vs elevation")
+plot(forest_rho, main="intensity vs forest")
+plot(hfi_rho, main="intensity vs hfi")
+plot(water_rho, main="intensity vs water")
+```
+### 20. Modelling with all co-variates
+```{r}
+elevation_formula <- cg_ppp~Elevation+I(Elevation^2)+Forest+I(Forest^2)+HFI+I(HFI^2)+Dist_Water+I(Dist_Water^2)
+all_covariate_fit <- ppm(elevation_formula, data=DATA)
+summary(all_covariate_fit)
+plot(nonlinear_elevation_fit, se = FALSE, superimpose = FALSE)
+plot(cg_ppp, pch = 16, cex = 0.3, cols = "white", add = TRUE, alpha =0.3)
+plot(cg_ppp, pch = 16, cex = 0.1, cols = "black", add = TRUE, alpha =0.3)
+```
+### 21. Comparing All Covariate with null model and Elevation only Model
+```{r}
+null_fit <- ppm(cg_ppp,data = DATA)
+
+AIC(null_fit)
+AIC(nonlinear_elevation_fit)
+AIC(all_covariate_fit)
+quadrat.test(all_covariate_fit, nx = 10, ny = 10)
+anova(all_covariate_fit,null_fit, test = "LRT")
+anova(all_covariate_fit,nonlinear_elevation_fit, test = "LRT")
+
+```
+
+
