@@ -7,6 +7,8 @@ output: html_document
 
 #### **Index**
 
+#### ** Relationship with Elevation**
+
 #### **1. Loading Data**
 #### **2. Removing NA**
 #### **3. Method to get BC Albers**
@@ -19,6 +21,9 @@ output: html_document
 #### **10. calculating the intensity of Canadian goose locations with respect to elevation**
 #### **11. calculating the correlation of Canadian goose locations with respect to elevation**
 #### **12. calculating presence of clustering**
+
+#### ** Model Fitting**
+
 #### **13. Elevation only Linear Model**
 #### **14. Elevation only non-linear model**
 #### **15. Elevation only Linear Model vs Elevation only non-linear model**
@@ -28,14 +33,18 @@ output: html_document
 #### **19. Checking all rho values of co-variates**
 #### **20. Modelling with all co-variates**
 #### **21. Comparing All Covariate model with null model and Elevation only Model**
+#### **22. Partial Residual of all co-variate model**
+#### **23. Fitting Spline Model**
+#### **24. Comparing smooth vs all- covariate model**
+#### **25. Calculating partial residual of spline model**
 
 
 
 ```{r}
 library(spatstat)
+library(maptools)
 library(sp)
 library(sf)
-library(maptools)
 ```
 ### 1. Loading Data
 ```{r}
@@ -214,8 +223,8 @@ if(length(DATA$Elevation[cg_ppp_df[i,]]) == 0){
 }
 cg_ppp_df <- na.omit(cg_ppp_df)
 cg_ppp_df$group <- cut(cg_ppp_df$value, breaks = 5, labels = c("Low", "Medium-Low", "Medium", "Medium-High", "High"))
-elevation_vice_counts <- table(cg_ppp_df$group)
-plot(elevation_vice_counts)
+elevation_vice_counts <- as.data.frame(table(cg_ppp_df$group))
+ggplot(data=elevation_vice_counts, aes(x=Var1, y=Freq)) + geom_bar(stat="identity") +   labs(x = "Elevation Group", y = "Number of Geese", title = "Distribution of geese in accordance with elevation")
 ```
 
 ### 9. Testing homogeneity
@@ -289,6 +298,8 @@ quadrat.test(nonlinear_elevation_fit, nx = 10, ny = 10)
 ```
 ### 17. Visualising Residual Elevation only non-linear model prediction
 ```{r}
+library(sp)
+library(sf)
 res <- residuals(nonlinear_elevation_fit,type="pearson")
 #res[is.infinite(res)] <- NA
 #res <- na.omit(res)  # Remove missing values
@@ -332,11 +343,11 @@ AIC(null_fit)
 AIC(nonlinear_elevation_fit)
 AIC(all_covariate_fit)
 quadrat.test(all_covariate_fit, nx = 10, ny = 10)
-anova(s,null_fit, test = "LRT")
+anova(nonlinear_elevation_fit,null_fit, test = "LRT")
 anova(all_covariate_fit,nonlinear_elevation_fit, test = "LRT")
 ```
 
-## 
+## 22. Partial Residual of all co-variate model
 ```{r}
 par_res_elev <- parres(all_covariate_fit, "Elevation")
 par_res_hfi <- parres(all_covariate_fit, "HFI")
@@ -367,7 +378,7 @@ plot(par_res_forest,
      xlab = "Forest")
 ```
 
-##
+## 23. Fitting Spline Model
 ```{r}
 library(splines)
 
@@ -376,8 +387,14 @@ fit_smooth <- ppm(cg_ppp ~ bs(Elevation, 7) + bs(Forest, 19) + bs(Dist_Water, 7)
 
 fit_smooth
 ```
+## 24 Comparing smooth vs all- covariate model
+```{r}
+AIC(nonlinear_elevation_fit)
+AIC(fit_smooth)
+anova(nonlinear_elevation_fit,fit_smooth, test = "LRT")
+```
 
-## 
+## 25 Calculating partial residual of spline model
 ```{r}
 glm_par_res_elev <- parres(fit_smooth, "Elevation")
 glm_par_res_hfi <- parres(fit_smooth, "HFI")
@@ -385,7 +402,7 @@ glm_par_res_dw <- parres(fit_smooth, "Dist_Water")
 glm_par_res_forest <- parres(fit_smooth, "Forest")
 
 #Side by side plotting
-#par(mfrow = c(2,2))
+par(mfrow = c(2,2))
 plot(glm_par_res_elev,
      legend = FALSE,
      lwd = 2,
