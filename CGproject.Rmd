@@ -103,20 +103,20 @@ cg_ppp_8 <-ppp(x = c_g_data_8K$x, y = c_g_data_8K$y, window=as.owin(DATA$Window)
 cg_ppp_10 <-ppp(x = c_g_data_10k$x, y = c_g_data_10k$y, window=as.owin(DATA$Window))
 
 rho_e_5 <- rhohat(cg_ppp_5, DATA$Elevation) 
-rho_e_8 <- rhohat(cg_ppp_8, DATA$Elevation) 
-rho_e_10 <- rhohat(cg_ppp_10, DATA$Elevation) 
+rho_e_8 <- rhohat(cg_ppp_8, DATA$Elevation)
+rho_e_10 <- rhohat(cg_ppp_10, DATA$Elevation)
 
 rho_f_5 <- rhohat(cg_ppp_5, DATA$Forest) 
-rho_f_8 <- rhohat(cg_ppp_8, DATA$Forest) 
-rho_f_10 <- rhohat(cg_ppp_10, DATA$Forest) 
+rho_f_8 <- rhohat(cg_ppp_8, DATA$Forest)
+rho_f_10 <- rhohat(cg_ppp_10, DATA$Forest)
 
 rho_h_5 <- rhohat(cg_ppp_5, DATA$HFI) 
-rho_h_8 <- rhohat(cg_ppp_8, DATA$HFI) 
-rho_h_10 <- rhohat(cg_ppp_10, DATA$HFI) 
+rho_h_8 <- rhohat(cg_ppp_8, DATA$HFI)
+rho_h_10 <- rhohat(cg_ppp_10, DATA$HFI)
 
 rho_w_5 <- rhohat(cg_ppp_5, DATA$Dist_Water) 
-rho_w_8 <- rhohat(cg_ppp_8, DATA$Dist_Water) 
-rho_w_10 <- rhohat(cg_ppp_10, DATA$Dist_Water) 
+rho_w_8 <- rhohat(cg_ppp_8, DATA$Dist_Water)
+rho_w_10 <- rhohat(cg_ppp_10, DATA$Dist_Water)
 
 print(paste("The average rho value (elevation) of datasets with 5k, 8k and 10k rows are :",rho_e_5$ave[1]," , ",rho_e_8$ave[1]," , ",rho_e_10$ave[1]))
 
@@ -227,6 +227,8 @@ plot(Q, cex = 1, col = "black", add = T)
 plot(intensity(Q, image = T), main = "Canadian Goose Location")
 plot(cg_ppp,  pch = 16, cex = 1,cols = "grey",add = T)
 quadrat.test(Q)
+
+plot(density(cg_ppp))
 ```
 
 ### 10. calculating the intensity of Canadian goose locations with respect to elevation
@@ -330,9 +332,79 @@ AIC(null_fit)
 AIC(nonlinear_elevation_fit)
 AIC(all_covariate_fit)
 quadrat.test(all_covariate_fit, nx = 10, ny = 10)
-anova(all_covariate_fit,null_fit, test = "LRT")
+anova(s,null_fit, test = "LRT")
 anova(all_covariate_fit,nonlinear_elevation_fit, test = "LRT")
-
 ```
 
+## 
+```{r}
+par_res_elev <- parres(all_covariate_fit, "Elevation")
+par_res_hfi <- parres(all_covariate_fit, "HFI")
+par_res_dw <- parres(all_covariate_fit, "Dist_Water")
+par_res_forest <- parres(all_covariate_fit, "Forest")
+
+#Side by side plotting
+#par(mfrow = c(2,2))
+plot(par_res_elev,
+     legend = FALSE,
+     lwd = 2,
+     main = "",
+     xlab = "Elevation (m)")
+plot(par_res_hfi,
+     legend = FALSE,
+     lwd = 2,
+     main = "",
+     xlab = "HFI")
+plot(par_res_dw,
+     legend = FALSE,
+     lwd = 2,
+     main = "",
+     xlab = "Distance from water")
+plot(par_res_forest,
+     legend = FALSE,
+     lwd = 2,
+     main = "",
+     xlab = "Forest")
+```
+
+##
+```{r}
+library(splines)
+
+#Fit the PPP model
+fit_smooth <- ppm(cg_ppp ~ bs(Elevation, 7) + bs(Forest, 19) + bs(Dist_Water, 7) + bs(HFI, 8), data = DATA, use.gam = TRUE)
+
+fit_smooth
+```
+
+## 
+```{r}
+glm_par_res_elev <- parres(fit_smooth, "Elevation")
+glm_par_res_hfi <- parres(fit_smooth, "HFI")
+glm_par_res_dw <- parres(fit_smooth, "Dist_Water")
+glm_par_res_forest <- parres(fit_smooth, "Forest")
+
+#Side by side plotting
+#par(mfrow = c(2,2))
+plot(glm_par_res_elev,
+     legend = FALSE,
+     lwd = 2,
+     main = "",
+     xlab = "Elevation (m)")
+plot(glm_par_res_hfi,
+     legend = FALSE,
+     lwd = 2,
+     main = "",
+     xlab = "HFI")
+plot(glm_par_res_dw,
+     legend = FALSE,
+     lwd = 2,
+     main = "",
+     xlab = "Distance from water")
+plot(glm_par_res_forest,
+     legend = FALSE,
+     lwd = 2,
+     main = "",
+     xlab = "Forest")
+```
 
