@@ -83,8 +83,11 @@ rho_dist_water <- rhohat(ppp_goose, DATA$Dist_Water)
 
 plot(rho_elev, xlim = c(0, max(DATA$Elevation)))
 plot(rho_fore, xlim = c(0, max(DATA$Forest)))
-plot(rho_hfi, xlim = c(0, max(DATA$HFI)))
 plot(rho_dist_water, xlim = c(0, max(DATA$Dist_Water)))
+```
+
+```{r}
+plot(rho_hfi, xlim = c(0, max(DATA$HFI)), main="Intensity vs HFI")
 ```
 
 ## Regression Model
@@ -146,4 +149,98 @@ plot(par_res_hfi,
      lwd = 2,
      main = "Partial Residual Plot",
      xlab = "HFI_scaled")
+```
+
+### build GAM models
+
+```{r}
+fit2 <- ppm(ppp_goose~bs(HFI_scaled, 3), data=DATA, use.gam=TRUE)
+```
+
+```{r}
+fit2
+```
+
+```{r}
+par_res_hfi <- parres(fit2, "HFI_scaled")
+plot(par_res_hfi,
+     legend = FALSE,
+     lwd = 2,
+     main = "",
+     xlab = "HFI_scaled")
+```
+
+### visualize the gam model
+
+```{r}
+plot(fit2, se=FALSE, superimpose=FALSE)
+plot(ppp_goose,
+     pch = 16,
+     cex = 0.7,
+     cols = "white",
+     add = TRUE)
+plot(ppp_goose,
+     pch = 16,
+     cex = 0.5,
+     cols = "black",
+     add = TRUE)
+```
+
+```{r}
+AIC(fit1)
+AIC(fit2)
+```
+
+```{r}
+anova(fit1, fit2, test='LRT')
+```
+
+## added part
+
+```{r fig.width = 8, fig.height = 6}
+library(viridisLite)
+
+# Visualizing location of Canadian Goose with elevation
+plot(DATA$HFI, main = "HFI Image")
+points(ppp_goose, pch = 16, cex = 0.7, col = "white")
+points(ppp_goose, pch = 16, cex = 0.3, col = "black", xpd = TRUE)
+fig <- persp(DATA$HFI, 
+      main = "Perspective Plot of HFI",  
+      theta = -5, phi = 45,  
+      expand = 150,  
+      colmap = colors, 
+      border = NA,  
+      apron = FALSE,
+      #r=1,
+      axes = TRUE,  
+      xlab = "X-axis", 
+      ylab = "Y-axis", 
+      zlab = "HFI",  
+      ticktype = "detailed",  
+      shade = 0.3,
+      lwd = .5,  
+      lty = "solid",  
+      box = FALSE,
+      visible = TRUE, 
+      scale=FALSE
+)
+
+perspPoints(ppp_goose, Z = DATA$HFI, M = fig, pch = 16, cex = 0.6,col='white')
+perspPoints(ppp_goose, Z = DATA$HFI, M = fig, pch = 16, cex = 0.5,col='black')
+```
+
+```{r}
+library(ggplot2)
+cg_ppp_df <- as.data.frame(ppp_goose)
+for (i in 1:nrow(cg_ppp_df)) {
+if(length(DATA$HFI[cg_ppp_df[i,]]) == 0){
+  cg_ppp_df$value[i] <- NA
+}else{
+    cg_ppp_df$value[i] <- DATA$HFI[cg_ppp_df[i,]]
+  }
+}
+cg_ppp_df <- na.omit(cg_ppp_df)
+cg_ppp_df$group <- cut(cg_ppp_df$value, breaks = 5, labels = c("Low", "Medium-Low", "Medium", "Medium-High", "High"))
+hfi_vice_counts <- as.data.frame(table(cg_ppp_df$group))
+ggplot(data=hfi_vice_counts, aes(x=Var1, y=Freq)) + geom_bar(stat="identity") +   labs(x = "HFI Group", y = "Number of Geese", title = "Distribution of geese in accordance with HFI") 
 ```
