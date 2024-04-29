@@ -1,0 +1,188 @@
+---
+title: "Appendix C"
+author: "Somya Nagar"
+date: "`r Sys.Date()`"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Effects with Forest Covariate
+
+## 1. Loading the dataset
+
+```{r}
+# Imports
+library(spatstat)
+library(sp)
+library(sf)
+library(maptools)
+```
+
+```{r}
+load("BC_Covariates.Rda")
+data <- read.csv("cg_10k_samples.csv")
+```
+
+```{r}
+head(data)
+```
+
+## 2. Removing NA
+
+```{r}
+data <- na.omit(data)
+```
+
+## 3. Method to get BC Albers
+
+```{r}
+#' Helps to get BC Albers projection
+#'
+#' @param df 
+#'
+#' @return BC Albers projection
+#'
+#' @examples
+get_bc_albers <- function(df)
+{
+ sf_points <- st_as_sf(df, coords = c("decimalLongitude","decimalLatitude"), crs = 4326)
+ bc_albers_proj <- "+proj=aea +lat_0=45 +lon_0=-126 +lat_1=50 +lat_2=58.5 +x_0=1000000 +y_0=0 +datum=NAD83 +units=m +no_defs"
+ sf_points_bc_albers <- st_transform(sf_points, crs = bc_albers_proj)
+ return(sf_points_bc_albers)
+}
+```
+
+## 4. Adding x and y to the datasets
+
+```{r}
+sf_points_bc_albers <- get_bc_albers(data)
+data$x <- st_coordinates(sf_points_bc_albers)[, 1]
+data$y <- st_coordinates(sf_points_bc_albers)[, 2]
+head(data)
+```
+
+## 5. Analysis
+
+```{r}
+# Creating PPP
+cg_ppp <-ppp(x = data$x, y = data$y, window=as.owin(DATA$Window))
+plot(DATA$Window, main = "Distribution of observations", col = "lightgreen")
+points(cg_ppp, cex = 0.4, col = "red")
+
+```
+
+```{r}
+# Plotting the Forest covriate
+library(viridisLite)
+
+# Visualizing location of Canadian Goose with forests
+plot(DATA$Forest, main = "Forest Image")
+points(cg_ppp, pch = 16, cex = 0.6, col = "black")
+points(cg_ppp, pch = 16, cex = 0.3, col = "green", xpd = TRUE)
+```
+
+## 6. Calculating rho with respect to forests
+
+```{r}
+# Estimating rho
+rho_forest <- rhohat(cg_ppp, DATA$Forest)
+```
+
+```{r}
+# Plotting canada goose with respect to rho
+plot(rho_forest,
+     main = "",
+     xlab = "Forest (% cover)", xlim = c(0, max(DATA$Forest)))
+```
+
+## 7. Fitting model with respect to forest covariate
+
+1.  Linear model
+
+```{r}
+forest_fit_linear <- ppm(cg_ppp~Forest, data=DATA)
+forest_fit_linear
+```
+
+```{r}
+plot(forest_fit_linear, se = FALSE, superimpose = FALSE)
+plot(cg_ppp, pch = 16, cex = 0.3, cols = "green", add = TRUE)
+```
+
+2.  Quadratic Model
+
+```{r}
+forest_fit_quad <- ppm(cg_ppp~Forest+I(Forest^2), data=DATA)
+forest_fit_quad
+```
+
+```{r}
+plot(forest_fit_quad, se = FALSE, superimpose = FALSE)
+plot(cg_ppp, pch = 16, cex = 0.3, cols = "green", add = TRUE)
+```
+
+```{r}
+# Testing model performance
+aic_linear <- AIC(forest_fit_linear)
+aic_quad <- AIC(forest_fit_quad)
+
+print(paste("AIC for linear model:", aic_linear))
+print(paste("AIC for quadratic model:", aic_quad))
+```
+
+The quadratic model is a better fit.
+
+```{r}
+# Anova LRT test
+anova(forest_fit_linear, forest_fit_quad, test = "LRT")
+```
+
+There is significant deviation.
+
+## 8. Fitting GAM with all covariates
+
+```{r}
+library(splines)
+
+# Fit the GAM
+
+fit_gam <- ppm(cg_ppp ~ bs(Elevation, 7) + bs(Forest, 4) + bs(Dist_Water, 4) + bs(HFI, 4), data = DATA, use.gam = TRUE)
+```
+
+```{r}
+# Partial Residue plots
+
+glm_par_res_elev <- parres(fit_gam, "Elevation")
+glm_par_res_hfi <- parres(fit_gam, "HFI")
+glm_par_res_dw <- parres(fit_gam, "Dist_Water")
+glm_par_res_forest <- parres(fit_gam, "Forest")
+#Side by side plotting
+par(mfrow = c(2,2))
+plot(glm_par_res_elev,
+legend = FALSE,
+lwd = 2,
+main = ""
+,
+xlab = "Elevation (m)")
+plot(glm_par_res_hfi,
+legend = FALSE,
+lwd = 2,
+main = ""
+,
+xlab = "HFI")
+plot(glm_par_res_dw,
+legend = FALSE,
+lwd = 2,
+main = ""
+,
+xlab = "Distance from water")
+plot(glm_par_res_forest,
+legend = FALSE,
+lwd = 2,
+main = ""
+,
+xlab = "Forest")
+```
