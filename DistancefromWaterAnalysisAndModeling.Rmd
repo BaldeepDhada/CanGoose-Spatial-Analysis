@@ -1,0 +1,204 @@
+---
+title: "589 Project - Baldeep Dhada"
+output:
+  pdf_document: default
+  html_document: default
+date: "2024-04-11"
+---
+
+# Loading the packages
+
+```{r}
+library(maptools)
+library(ggplot2)
+library(spatstat)
+library(sf)
+library(sp)
+library(viridis)
+```
+
+# Reading the data
+
+```{r}
+data <- read.csv('goose_spatial_data.csv', sep = '\t')
+
+head(data)
+```
+
+```{r}
+goose_data <- subset(data, select = c('gbifID', 'locality', 'individualCount', 'decimalLatitude', 'decimalLongitude', 'eventDate', 'year', 'month'))
+```
+
+```{r}
+sampled_data <- goose_data[sample(nrow(goose_data), 10000), ]
+data <- data.frame(sampled_data)
+```
+
+# Loading the covariates
+
+```{r}
+load('BC_Covariates.Rda')
+```
+
+```{r}
+DATA$Dist_Water
+```
+
+# Plotting Distance from Water
+
+```{r}
+water <- DATA$Dist_Water
+
+class(water)
+```
+
+```{r}
+plot(water, main = 'Distance from Water in British Colombia')
+```
+# Transforming the longitude and Latitude
+
+```{r}
+coord <- data[,c('decimalLatitude','decimalLongitude')]
+# Clean the data by removing the observations with NA
+coord <- na.omit(coord)
+coordinates(coord) <- ~decimalLongitude+decimalLatitude
+proj4string(coord) <- CRS("+proj=longlat +datum=WGS84")
+coord_conv <- spTransform(coord,CRS("+proj=aea +lat_0=45 +lon_0=-126 +lat_1=50 +lat_2=58.5 +x_0=1000000 +y_0=0 +datum=NAD83 +units=m +no_defs"))
+```
+
+# Making a ppp object and plotting it
+
+```{r}
+window <-  as.owin(DATA$Window)
+# create ppp object with coordination and the window 
+ppp_goose <- ppp(coord_conv@coords[,1], 
+                 coord_conv@coords[,2],
+                 window = window)
+           
+```
+
+```{r}
+plot(ppp_goose)
+```
+
+# Creating a perspective plot
+
+```{r}
+colors <- viridis(9)
+
+fig <- persp(DATA$Dist_Water, # source data
+             theta = -5, phi = 45, # rotation
+             expand = 10, # z-axis expansion
+             border = NA, #remove grid borders
+             apron = TRUE, #apron around edge
+             shade = 0.3, # shading
+             box = FALSE, # axes on/off
+             main = "BC Distance from Water", # title
+             visible = TRUE, #supporting calculations
+             lwd = 0.5,
+             lty = 'solid',
+             colmap=colors) # colors
+
+perspPoints(ppp_goose, Z = DATA$Dist_Water, M = fig, pch = 16, cex = 0.4, col=rgb(1,1,1, alpha = 0.7))
+```
+
+# Classifying water classes and plotting them
+
+```{r}
+water_classes <- cut(water, breaks = 5, labels = c("very low","low","medium", "high", "very high")) 
+```
+
+```{r}
+# Plot the distance from water data with numerical classes
+plot(
+  water_classes,
+  main = "Distance from Water Classes",
+  cex.main = 20
+)
+
+points(ppp_goose, col = 'black', pch = 16, alpha = 0.2, cex = 0.8)
+points(ppp_goose, col = 'green', pch = 16, alpha = 0.2, cex = 0.3)
+```
+
+# Visualizing the number of geese in each class
+
+```{r}
+class_with_most_geese <- levels(water_classes)[which.max(table(factor(water_classes, levels = levels(water_classes))))]
+cat('The class with the most points is:', class_with_most_geese)
+```
+
+```{r}
+cg_ppp_df <- as.data.frame(ppp_goose)
+for (i in 1:nrow(cg_ppp_df)) {
+if(length(DATA$Dist_Water[cg_ppp_df[i,]]) == 0){
+  cg_ppp_df$value[i] <- NA
+}else{
+    cg_ppp_df$value[i] <- DATA$Dist_Water[cg_ppp_df[i,]]
+  }
+}
+cg_ppp_df <- na.omit(cg_ppp_df)
+cg_ppp_df$group <- cut(cg_ppp_df$value, breaks = 5, labels = c("Low", "Medium-Low", "Medium", "Medium-High", "High"))
+water_vice_counts <- as.data.frame(table(cg_ppp_df$group))
+```
+```{r}
+ggplot(data=water_vice_counts, aes(x=Var1, y=Freq)) + geom_bar(stat="identity") +   labs(x = "Distance from Water Group", y = "Number of Geese", title = "Distribution of Geese in accordance with Distance from Water") + theme(plot.title = element_text(hjust = 0.5))
+```
+
+# Creating the rho plot and plotting it
+
+```{r}
+rho_dist_water <- rhohat(ppp_goose, DATA$Dist_Water)
+```
+
+```{r}
+plot(rho_dist_water, xlim = c(0, max(DATA$Dist_Water)), main = 'Intensity Vs Distance from Water', ylab = 'p(Distance from Water)', xlab = 'Distance from Water (m)')
+```
+
+# Linear model for water
+
+```{r}
+water_formula <- ppp_goose~Dist_Water
+linear_water_fit <- ppm(water_formula, data=DATA)
+linear_water_fit
+```
+
+```{r}
+plot(linear_water_fit, se = FALSE, superimpose = FALSE, main = 'Linear Model for Distance from Water')
+plot(ppp_goose, pch = 16, cex = 0.3, cols = "white", add = TRUE)
+plot(ppp_goose, pch = 16, cex = 0.1, cols = "black", add = TRUE)
+```
+
+# Non-linear model for water
+
+```{r}
+water_nonlinear_formula <- ppp_goose~Dist_Water+I(Dist_Water^2)
+nonlinear_water_fit <- ppm(water_nonlinear_formula, data=DATA)
+nonlinear_water_fit
+```
+
+```{r}
+plot(nonlinear_water_fit, se = FALSE, superimpose = FALSE, main = 'Non-linear Model for Distance from Water')
+plot(ppp_goose, pch = 16, cex = 0.3, cols = "white", add = TRUE)
+plot(ppp_goose, pch = 16, cex = 0.1, cols = "black", add = TRUE)
+```
+
+# Water only Linear Model vs Water only non-linear model
+
+```{r}
+AIC(nonlinear_water_fit)
+AIC(linear_water_fit)
+anova(nonlinear_water_fit,linear_water_fit, test = "LRT")
+```
+```{r}
+AIC(linear_water_fit) - AIC(nonlinear_water_fit)
+```
+
+
+All lines of evidence point towards the linear model being a better fit to the data than the non-linear model.
+
+# Checking if data deviate significantly from the water only non-linear model prediction
+
+```{r}
+quadrat.test(nonlinear_water_fit, nx = 10, ny = 10)
+```
+The small p value tells us that there’s a significant deviation from our model’s predictions.
